@@ -1,7 +1,7 @@
 import pandas as pd
 from lxml import etree
 import re
-from collections import defaultdict
+from collections import defaultdict, Counter
 
 def clean_html(raw_html):
     cleanr = re.compile('<.*?>')
@@ -120,3 +120,116 @@ def normalize_scores(df,leave_min_max_out=True):
     df.rename(columns={'normalized_score':'score'},inplace=True)
 
   return df
+
+
+def custom_tokenizer(text):
+  """
+  Tokenizes a given string into words, preserving apostrophes.
+  
+  This tokenizer is a regex-based solution that works by matching
+  sequences of alphanumeric characters and apostrophes that are
+  bounded by word boundaries. This ensures that words with apostrophes
+  are treated as a single token, rather than separate tokens.
+  
+  :param text: The string to be tokenized.
+  :type text: str
+  
+  :return: A list of words.
+  :rtype: list
+  """
+  return re.findall(r"\b\w[\w']+\b", text.lower())
+
+def count_common_words(question, answer):
+  """
+  Counts the number of common words between a question and answer.
+
+  Given a question and an answer, this function tokenizes both strings and
+  counts the number of occurrences of each common word between them.
+
+  :param question: The question string
+  :type question: str
+  :param answer: The answer string
+  :type answer: str
+
+  :return: A dictionary where the keys are the words and the values are the number of occurrences
+  :rtype: dict
+  """
+  question_words = custom_tokenizer(question)
+  answer_words = custom_tokenizer(answer)
+
+  # sets for easier checks
+  question_set = set(question_words)
+  answer_set = set(answer_words)
+
+  # intersect
+  common_words = question_set.intersection(answer_set)
+
+  # count how many there are in both sets
+  word_count = Counter()
+  word_count.update([word for word in question_words if word in common_words])
+  word_count.update([word for word in answer_words if word in common_words])
+
+  return dict(word_count)
+
+
+def get_cw_feature(df):
+  """
+  Counts the number of common words between each question and answer in a given
+  DataFrame and appends it as a new column named 'common_words'.
+  
+  :param df: The given DataFrame.
+  :type df: pandas.DataFrame
+  
+  :return: The DataFrame with the 'common_words' column appended.
+  :rtype: pandas.DataFrame
+  """  
+  common_words_list = []
+  # iterate through
+  for idx, row in df.iterrows():
+        question = row['question']
+        answer = row['answer']
+
+        # append common words to a list
+        common_words = count_common_words(question, answer)
+        common_words_list.append(common_words)
+
+  df['common_words'] = common_words_list
+  return df
+
+def get_sentences(text):
+  """
+  Tokenizes a given text into sentences.
+
+  This function takes a given text and uses a regex to break it into sentences.
+  The sentences are then returned as a list.
+
+  :param text: The text to be tokenized.
+  :type text: str
+
+  :return: A list of sentences.
+  :rtype: list
+  """
+  sentences = []
+  regex = r'([A-z][^.!?]*[.!?]*"?)'
+  for sentence in re.findall(regex, text):
+    sentences.append(sentence)
+  return sentences
+
+def get_question_sentences(sentences):
+  """
+  Finds all sentences in a given list of sentences that end with a question mark.
+
+  This function takes a list of sentences and returns a list of sentences that
+  end with a question mark.
+
+  :param sentences: The list of sentences to be searched.
+  :type sentences: list
+
+  :return: A list of sentences that end with a question mark.
+  :rtype: list
+  """
+  questions = []
+  for sentence in sentences:
+    if sentence[-1] == '?':
+      questions.append(sentence)
+  return questions
