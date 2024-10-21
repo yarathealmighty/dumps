@@ -2,6 +2,9 @@ import pandas as pd
 from lxml import etree
 import re
 from collections import defaultdict, Counter
+import praw
+import json
+import time
 
 def clean_html(raw_html):
     cleanr = re.compile('<.*?>')
@@ -233,3 +236,45 @@ def get_question_sentences(sentences):
     if sentence[-1] == '?':
       questions.append(sentence)
   return questions
+
+def get_posts_from_subreddit(CLIENT_ID,CLIENT_SECRET,USER_AGENT,SUBREDDIT_NAME):
+
+  reddit = praw.Reddit(
+    client_id=CLIENT_ID,
+    client_secret=CLIENT_SECRET,
+    user_agent=USER_AGENT
+  )
+
+  subreddit = reddit.subreddit(SUBREDDIT_NAME)
+
+  posts = []
+  for submission in subreddit.new(limit=None):
+    submission_data = {
+        'title': submission.title,
+        'selftext': submission.selftext,
+        'upvotes': submission.score,
+        'created_utc': submission.created_utc,
+        'id': submission.id,
+        'author': str(submission.author),
+        'comments': []
+      }
+
+    submission.comments.replace_more(limit=None)
+    for comment in submission.comments.list():
+        submission_data['comments'].append({
+            'author': str(comment.author),
+            'comment_body': comment.body,
+            'comment_ups': comment.score,
+            'created_utc': comment.created_utc
+          })
+
+    posts.append(submission_data)
+
+    # add delay to not get locked out
+    time.sleep(1)
+
+  with open(f'{SUBREDDIT_NAME}_posts_and_comments.json', 'w') as file:
+    json.dump(posts, file, indent=4)
+
+  print(f"Collected {len(posts)} posts from r/{SUBREDDIT_NAME} including comments")
+
