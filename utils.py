@@ -6,6 +6,10 @@ import praw
 import json
 import time
 
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
+
+
 def clean_html(raw_html):
     cleanr = re.compile('<.*?>')
     cleantext = re.sub(cleanr, '', raw_html)
@@ -238,7 +242,21 @@ def get_question_sentences(sentences):
   return questions
 
 def get_posts_from_subreddit(CLIENT_ID,CLIENT_SECRET,USER_AGENT,SUBREDDIT_NAME):
+  """
+  Collects posts from a given subreddit, including all comments.
 
+  :param CLIENT_ID: The client id for the PRAW instance.
+  :type CLIENT_ID: str
+  :param CLIENT_SECRET: The client secret for the PRAW instance.
+  :type CLIENT_SECRET: str
+  :param USER_AGENT: The user agent for the PRAW instance.
+  :type USER_AGENT: str
+  :param SUBREDDIT_NAME: The name of the subreddit to collect from.
+  :type SUBREDDIT_NAME: str
+
+  :return: A list of posts with comments, written to a json file.
+  :rtype: list
+  """
   reddit = praw.Reddit(
     client_id=CLIENT_ID,
     client_secret=CLIENT_SECRET,
@@ -278,3 +296,110 @@ def get_posts_from_subreddit(CLIENT_ID,CLIENT_SECRET,USER_AGENT,SUBREDDIT_NAME):
 
   print(f"Collected {len(posts)} posts from r/{SUBREDDIT_NAME} including comments")
 
+def calculate_parameter_influence(df,y='rmse'):
+    """
+    Calculates the influence of parameters on a target variable using correlation.
+
+    This function computes the correlation matrix for the given DataFrame, extracts
+    the correlations of a specified target variable, and returns the absolute values
+    of these correlations sorted in descending order.
+
+    :param df: The DataFrame containing the data.
+    :type df: pandas.DataFrame
+    :param y: The target variable for which to calculate parameter influence. Default is 'rmse'.
+    :type y: str
+
+    :return: A Series containing the absolute correlations of parameters with the target variable, sorted in descending order.
+    :rtype: pandas.Series
+    """
+    correlation_matrix = df.corr()
+    rmse_correlations = correlation_matrix[y].drop(y)
+    sorted_correlations = rmse_correlations.abs().sort_values(ascending=False)
+    return sorted_correlations
+
+def remove_emojis(text):
+    """
+    Removes emojis and certain symbols from a given text string.
+
+    This function uses a regex pattern to identify and remove a variety of emoji
+    ranges and additional symbols from the input text.
+
+    :param text: The string from which to remove emojis and symbols.
+    :type text: str
+
+    :return: The string with emojis and symbols removed.
+    :rtype: str
+    """
+    emoji_pattern = re.compile(
+        "[\U0001F600-\U0001F64F"  # Emoticons
+        "\U0001F300-\U0001F5FF"  # Symbols & Pictographs
+        "\U0001F680-\U0001F6FF"  # Transport & Map Symbols
+        "\U0001F700-\U0001F77F"  # Alchemical Symbols
+        "\U0001F780-\U0001F7FF"  # Geometric Shapes Extended
+        "\U0001F800-\U0001F8FF"  # Supplemental Arrows-C
+        "\U0001F900-\U0001F9FF"  # Supplemental Symbols and Pictographs
+        "\U0001FA00-\U0001FA6F"  # Chess Symbols
+        "\U0001FA70-\U0001FAFF"  # Symbols and Pictographs Extended-A
+        "\U00002700-\U000027BF"  # Dingbats
+        "\U0001F1E6-\U0001F1FF"  # Flags (iOS)
+        "\U00002500-\U00002BEF"  # Various Symbols
+        "\U000024C2-\U0001F251"  # Enclosed characters
+        "]+",
+        flags=re.UNICODE
+    )
+    return emoji_pattern.sub(r'', text)
+
+def remove_whitespace(text):
+    """
+    Removes all whitespace from a given string.
+
+    :param text: The string from which to remove whitespace.
+    :type text: str
+
+    :return: The string with all whitespace removed.
+    :rtype: str
+    """
+    return re.sub(r'\s+', '', text)
+
+def calculate_cosine_similarity(df):
+    """
+    Calculates the cosine similarity between a question and its corresponding answer.
+
+    This function uses scikit-learn's TfidfVectorizer to calculate the cosine similarity between each question and its
+    corresponding answer. The resulting cosine similarities are then added as a column to the given DataFrame.
+
+    :param df: The DataFrame containing the questions and answers for which to calculate the cosine similarity.
+    :type df: pandas.DataFrame
+
+    :return: The DataFrame with the added cosine similarity column.
+    :rtype: pandas.DataFrame
+    """
+    df['combined_text'] = df['question'] + ' ' + df['answer']
+
+    vectorizer = TfidfVectorizer()
+
+    tfidf_question = vectorizer.fit_transform(df['question'])
+    tfidf_answer = vectorizer.transform(df['answer'])
+
+    cosine_similarities = [cosine_similarity(tfidf_question[i], tfidf_answer[i])[0][0] for i in tqdm(range(len(df)), desc='Calculating cosine similarity for each question - answer pair', total=len(df))]
+
+    df['cosine_similarity'] = cosine_similarities
+    df = df.drop(columns=['combined_text'])
+
+    return df
+
+def contains_media(text):
+    """
+    Checks if a given text contains any media URLs or a gif image command.
+
+    :param text: The text to check.
+    :type text: str
+
+    :return: True if the text contains media, False otherwise.
+    :rtype: bool
+    """
+    if re.search(r'(https?:\/\/.*\.(png|jpg|jpeg|gif|mp4|webm|avi|mov|wmv))', text):
+        return True
+    if re.search(r'(![gif]*)',text):
+        return True
+    return False
