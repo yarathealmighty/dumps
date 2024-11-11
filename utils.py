@@ -9,6 +9,7 @@ import time
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
+from tqdm import tqdm
 
 def clean_html(raw_html):
     cleanr = re.compile('<.*?>')
